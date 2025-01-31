@@ -20,7 +20,7 @@
 
 (define-map streaks
   { owner: principal, habit-id: uint }
-  { current-streak: uint, longest-streak: uint }
+  { current-streak: uint, longest-streak: uint, last-completion: uint }
 )
 
 (define-map points principal uint)
@@ -49,31 +49,39 @@
     (
       (today (/ block-height u144))
       (completion-key { owner: tx-sender, habit-id: habit-id, date: today })
+      (streak-key { owner: tx-sender, habit-id: habit-id })
     )
     (asserts! (is-some (map-get? habits { owner: tx-sender, habit-id: habit-id })) err-not-found)
     (asserts! (is-none (map-get? completions completion-key)) err-already-completed)
     
     (map-set completions completion-key { completed: true })
-    (update-streak habit-id)
+    (check-and-update-streak habit-id today)
     (add-points)
     (ok true)
   )
 )
 
 ;; Private functions
-(define-private (update-streak (habit-id uint))
+(define-private (check-and-update-streak (habit-id uint) (today uint))
   (let
     (
       (streak-key { owner: tx-sender, habit-id: habit-id })
-      (current-streak (default-to u0 (get current-streak (map-get? streaks streak-key))))
-      (longest-streak (default-to u0 (get longest-streak (map-get? streaks streak-key))))
-      (new-current (+ current-streak u1))
+      (streak-data (default-to 
+        { current-streak: u0, longest-streak: u0, last-completion: u0 } 
+        (map-get? streaks streak-key)))
+      (last-completion (get last-completion streak-data))
+      (current-streak (get current-streak streak-data))
+      (longest-streak (get longest-streak streak-data))
+      (new-current (if (is-eq (- today u1) last-completion)
+        (+ current-streak u1)
+        u1))
     )
     (map-set streaks
       streak-key
       { 
         current-streak: new-current,
-        longest-streak: (if (> new-current longest-streak) new-current longest-streak)
+        longest-streak: (if (> new-current longest-streak) new-current longest-streak),
+        last-completion: today
       }
     )
   )
